@@ -14,26 +14,18 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'nikhil-pandey/t3code' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     environment: upstream-sync
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      actions: write
     steps:
+      # Full history for the merge base; the token pushes so the sync PR triggers CI.
       - uses: actions/checkout@v6
         with:
-          ref: main
           fetch-depth: 0
-          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-      - name: Prepare sync PR and dispatch CI
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+      - name: Sync upstream through a pull request
         env:
-          GH_TOKEN: ${{ github.token }}
-          SYNC_WORKFLOW_TOKEN_AVAILABLE: ${{ secrets.UPSTREAM_SYNC_TOKEN != '' }}
-        run: node tools/upstream-sync/sync.mjs
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tools/upstream-sync/sync.sh
