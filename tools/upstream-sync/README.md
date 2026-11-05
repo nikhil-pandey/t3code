@@ -1,8 +1,14 @@
 # Upstream sync
 
 [`sync-upstream.yml`](../../.github/workflows/sync-upstream.yml) runs daily at 06:17 UTC, or manually from `main`. It
-merges [pingdotgg/t3code](https://github.com/pingdotgg/t3code) `main` into `automation/upstream-sync` and opens a PR
-that GitHub auto-merges after required CI passes. It never pushes to `main` and never rewrites an open PR's branch.
+preserves original [pingdotgg/t3code](https://github.com/pingdotgg/t3code) commits on `upstream-main` and opens a PR
+from `automation/upstream-sync` containing one bot-authored snapshot. GitHub auto-merges it after required CI passes.
+It never pushes to `main` and never rewrites an open PR's branch.
+
+The snapshot's only parent is `main`, so imports appear under the bot in `main`'s log and blame. Original authors,
+hashes, and history stay on `upstream-main`, which only fast-forwards. `upstream-revision` records the last imported
+upstream commit, advances in the same commit as the snapshot, and is the merge base for the next sync. Never merge
+`upstream-main` into a sync PR or `main`.
 
 ## Setup
 
@@ -16,8 +22,10 @@ that GitHub auto-merges after required CI passes. It never pushes to `main` and 
 
 ## Operating
 
-- **Conflicts:** the workflow opens a draft PR that lists the conflicting files. Its branch is upstream `main`, so
-  resolve by merging `main` into it, then mark the PR ready. The next run enables auto-merge.
+- **Conflicts:** the workflow opens a draft PR with a provisional merge and lists the conflicting files. Inspect every
+  listed file against the pinned upstream revision, including binary or rename conflicts without text markers.
+  Resolve by editing and committing directly on the PR branch, keep `upstream-revision` unchanged, then mark the PR
+  ready. The next run enables auto-merge.
 - **Stale PR:** if `main` moves while a sync PR is open, use **Update branch** or merge `main` into it. Newer upstream
   commits wait until the open PR merges.
 - **Failed checks:** these block the merge. Fix the problem on the branch or rerun the check.
@@ -25,4 +33,5 @@ that GitHub auto-merges after required CI passes. It never pushes to `main` and 
   and has no open PR, the run fails until someone inspects and deletes it.
 - **Pausing:** to pause one sync, convert its PR to a draft. To pause all syncs, disable the workflow.
 
-Always merge sync PRs with a merge commit so upstream history is kept. Put our own changes in separate feature PRs.
+Merge sync PRs with a merge commit so the workflow recognizes the merged branch. Put our own changes in separate
+feature PRs.
