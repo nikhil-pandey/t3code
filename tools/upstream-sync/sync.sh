@@ -68,7 +68,8 @@ else
   draft=(--draft)
   body+=$'\n\nResolve conflicts by merging main into this branch, then mark the PR ready. '
   body+=$'The next sync run enables auto-merge.\n\nConflicting files:\n\n'
-  body+=$(tail -n +2 <<<"$tree" | sed 's/^/- /')
+  # Indented code prevents conflict paths from becoming mentions in the PR body.
+  body+=$(tail -n +2 <<<"$tree" | sed 's/^/    /')
 fi
 
 git push origin "$head:refs/heads/$branch"

@@ -29,3 +29,7 @@ jobs:
           GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: bash tools/upstream-sync/sync.sh
+      - name: Prepare credential cleanup
+        if: always()
+        # Vendored gitlinks lack .gitmodules entries and otherwise break checkout's credential cleanup.
+        run: git read-tree --empty
