@@ -52,6 +52,8 @@
         "scripts/fetch-expo-schema.ts",
         "scripts/probe-claude-fork-local-rollback-replay.ts",
         "scripts/update-test-shard-weights.ts",
+        // The single-executable pack config aliases Undici to this runtime bridge.
+        "scripts/undici-runtime.cjs!",
         "scripts/verify-background-live.ts",
         "src/provider/testFixtures/*.mjs",
         // graphqlgen reads its config.

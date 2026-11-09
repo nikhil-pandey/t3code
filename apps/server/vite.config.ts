@@ -97,6 +97,10 @@ export default mergeConfig(
       outDir: packBootstrap ? "dist-exe" : packExecutable ? cliAssetDir : "dist",
       sourcemap: !packExecutable,
       clean: true,
+      // SEA imports resolve only builtins; keep Undici in the staged runtime dependency tree.
+      ...(packExecutable
+        ? { alias: { undici: NodePath.join(import.meta.dirname, "scripts/undici-runtime.cjs") } }
+        : {}),
       // SEA can only resolve built-ins; keep dynamic imports inside each emitted module.
       ...(packExecutable ? { outputOptions: { codeSplitting: false } } : {}),
       ...(packMode === "1"
@@ -117,9 +121,11 @@ export default mergeConfig(
         : {}),
       deps: {
         // alwaysBundle=false has no opinion; neverBundle must retain transitive native acceleration.
-        alwaysBundle: shouldBundleCliDependency,
+        alwaysBundle: (id: string) =>
+          (packExecutable && id === "undici") || shouldBundleCliDependency(id),
         neverBundle: (id: string) =>
-          (packBootstrap && id === "./binMain.ts") || isExternalCliDependency(id),
+          (packBootstrap && id === "./binMain.ts") ||
+          (!(packExecutable && id === "undici") && isExternalCliDependency(id)),
         onlyBundle: false,
       },
       banner: {
