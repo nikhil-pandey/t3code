@@ -40,14 +40,19 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       channel: ${{ steps.release.outputs.channel }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          persist-credentials: false
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
+      # actions/checkout credential cleanup fails on the vendored gitlinks.
+      - name: Checkout
+        shell: bash
+        env:
+          CHECKOUT_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$CHECKOUT_REF"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
       - name: Validate source and resolve version
         id: release
         uses: actions/github-script@v8
@@ -119,14 +124,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.ref }}
-          persist-credentials: false
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
+      - name: Checkout
+        shell: bash
+        env:
+          CHECKOUT_REF: ${{ needs.prepare.outputs.ref }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$CHECKOUT_REF"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
       - uses: ./.github/actions/setup-ci-deps
         with:
           install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
@@ -244,14 +253,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.ref }}
-          persist-credentials: false
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
+      - name: Checkout
+        shell: bash
+        env:
+          CHECKOUT_REF: ${{ needs.prepare.outputs.ref }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$CHECKOUT_REF"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
       - uses: ./.github/actions/setup-ci-deps
         with:
           install-args: --filter=@t3tools/scripts...
