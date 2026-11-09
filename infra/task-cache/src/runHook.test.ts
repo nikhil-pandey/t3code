@@ -46,6 +46,11 @@ it("sends telemetry from a detached flusher that the task runner does not wait f
     vi.stubEnv("GITHUB_ACTIONS", undefined);
     vi.stubEnv("T3_TASK_CACHE_TELEMETRY", undefined);
     vi.stubEnv("VITE_CACHE_PATH", undefined);
+    const disabled = startRunHook({ root });
+    await disabled?.();
+    expect(flushers).toHaveLength(0);
+    expect(await NodeFSP.readdir(root)).not.toContain("node_modules");
+    vi.stubEnv("T3_TASK_CACHE_TELEMETRY", "on");
     const finish = startRunHook({ root });
     const summary = NodePath.join(root, "node_modules/.vite/task-cache/run/last-summary.json");
     await NodeFSP.mkdir(NodePath.dirname(summary), { recursive: true });
@@ -212,6 +217,7 @@ it("installs without masking .profile and configures CI through bash", async () 
       GITHUB_REPOSITORY: "pingdotgg/t3code",
       GITHUB_ACTIONS: "true",
       GITHUB_ENV: githubEnv,
+      BASH_ENV: "",
       RUNNER_TEMP: home,
     });
     const values = await NodeFSP.readFile(githubEnv, "utf8");
@@ -220,13 +226,19 @@ it("installs without masking .profile and configures CI through bash", async () 
       .split("\n")
       .find((line) => line.startsWith("BASH_ENV="))
       ?.slice(9);
-    const output = await run(["bash", "-c", 'printf "%s" "$NODE_OPTIONS"'], { BASH_ENV: bashEnv });
+    const output = await run(
+      ["bash", "--noprofile", "--norc", "-c", 'printf "%s" "$NODE_OPTIONS"'],
+      { BASH_ENV: bashEnv },
+    );
     expect(output).toContain("--import=file:");
     expect(output).toContain("/infra/task-cache/src/preload.mjs");
     await NodeFSP.rm(NodePath.join(home, ".local/share/t3-task-cache/preload.mjs"));
-    const missing = await run(["bash", "-c", `node -e 'console.log("missing preload is safe")'`], {
-      BASH_ENV: NodePath.join(home, ".config/t3-task-cache/env"),
-    });
+    const missing = await run(
+      ["bash", "--noprofile", "--norc", "-c", `node -e 'console.log("missing preload is safe")'`],
+      {
+        BASH_ENV: NodePath.join(home, ".config/t3-task-cache/env"),
+      },
+    );
     expect(missing).toContain("missing preload is safe");
 
     await NodeFSP.writeFile(

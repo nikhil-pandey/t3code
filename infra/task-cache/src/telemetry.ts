@@ -83,6 +83,7 @@ export function observeSummaries(
   env: NodeJS.ProcessEnv,
   home = NodeOS.homedir(),
 ) {
+  if (env.T3_TASK_CACHE_TELEMETRY !== "on") return () => {};
   const cache = env.VITE_CACHE_PATH || NodePath.join(root, "node_modules/.vite/task-cache");
   const queue = NodePath.join(home, ".cache/t3-task-cache/telemetry");
   let host =
@@ -160,6 +161,7 @@ export function observeSummaries(
 }
 
 export async function flushTelemetry(home = NodeOS.homedir(), env = process.env) {
+  if (env.T3_TASK_CACHE_TELEMETRY !== "on") return;
   const queue = NodePath.join(home, ".cache/t3-task-cache/telemetry");
   const deadline = Date.now() + 15_000;
   const skipped = new Set<string>();

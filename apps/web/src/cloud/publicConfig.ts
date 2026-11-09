@@ -61,9 +61,16 @@ export function resolveCloudPublicConfig(): CloudPublicConfig {
   };
 }
 
+export function isClientTelemetryEnabled(): boolean {
+  if (typeof window !== "undefined" && window.desktopBridge) {
+    return window.desktopBridge.getRelayTelemetryEnabled?.() === true;
+  }
+  return import.meta.env.VITE_T3CODE_TELEMETRY_ENABLED === "true";
+}
+
 export function resolveRelayTracingConfig() {
   // The relay exporter is created during module initialization, so this must be synchronous.
-  if (typeof window !== "undefined" && window.desktopBridge?.getRelayTelemetryEnabled() === false) {
+  if (!isClientTelemetryEnabled()) {
     return null;
   }
   const { relayTracing } = resolveCloudPublicConfig();

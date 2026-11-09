@@ -23,19 +23,25 @@ if (!__DEV__) {
   });
 }
 
+Observe.configure({ dispatchingEnabled: false, errorHandlingEnabled: false });
+
 let latestConfiguration = 0;
 
 // While sending is off, a dispatch pass drops what it finds, so one runs before turning it back on.
 // Best effort: Observe skips the pass while it is backing off from a failed send.
-export async function setCrashReportsEnabled(enabled: boolean) {
+export async function setCrashReportsEnabled(
+  enabled: boolean,
+  { discardPending = true }: { readonly discardPending?: boolean } = {},
+) {
   const configuration = ++latestConfiguration;
   const dispatchingEnabled = crashReportingAvailable && enabled;
-  if (dispatchingEnabled) {
+  if (dispatchingEnabled && discardPending) {
     await Observe.dispatchEvents();
     if (configuration !== latestConfiguration) return;
   }
   Observe.configure({
     dispatchingEnabled,
+    errorHandlingEnabled: dispatchingEnabled,
     ...(typeof appVariant === "string" ? { environment: appVariant } : {}),
   });
 }
@@ -43,9 +49,7 @@ export async function setCrashReportsEnabled(enabled: boolean) {
 if (!crashReportingAvailable) {
   void setCrashReportsEnabled(false);
 } else {
-  // Observe keeps its last configuration across launches; configuring it off while the setting
-  // loads would drop the last session's native crash. Imported lazily so the persistence graph
-  // never runs ahead of the imports `index.ts` orders first.
+  // Load lazily so persistence never runs ahead of the imports `index.ts` orders first.
   const changedSinceLoad = () => latestConfiguration !== 0;
   void import("../../persistence/imperative")
     .then(({ loadPreferences }) => loadPreferences())
@@ -53,9 +57,13 @@ if (!crashReportingAvailable) {
       (preferences) =>
         changedSinceLoad()
           ? undefined
-          : setCrashReportsEnabled(preferences.crashReportsEnabled !== false),
-      // Observe keeps the last choice it was given, which stands in for the unreadable one.
-      (error: unknown) => console.warn("[observe] could not read the crash report setting", error),
+          : setCrashReportsEnabled(preferences.crashReportsEnabled === true, {
+              discardPending: false,
+            }),
+      (error: unknown) => {
+        console.warn("[observe] could not read the crash report setting", error);
+        return changedSinceLoad() ? undefined : setCrashReportsEnabled(false);
+      },
     )
     .catch((error: unknown) => {
       console.warn("[observe] could not apply the crash report setting", error);

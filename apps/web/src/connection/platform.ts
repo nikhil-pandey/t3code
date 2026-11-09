@@ -1,3 +1,4 @@
+import { isClientTelemetryEnabled } from "../cloud/publicConfig";
 import {
   ClientCapabilities,
   PlatformConnectionSource,
@@ -413,6 +414,7 @@ const layerCapabilities = Layer.effectContext(
     });
 
     return Context.make(ClientCapabilities.CloudSession, cloudSession).pipe(
+      Context.add(ClientCapabilities.AnalyticsConsent, isClientTelemetryEnabled()),
       Context.add(ClientCapabilities.AnalyticsDevice, analyticsDevice),
       Context.add(ClientCapabilities.PrimaryEnvironmentAuth, primaryAuth),
       Context.add(ClientCapabilities.RelayDeviceIdentity, identity),
