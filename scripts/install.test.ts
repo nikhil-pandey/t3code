@@ -71,10 +71,10 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chan
     const server = NodeHttp.createServer((request, response) => {
       const url = new URL(request.url ?? "/", "http://fixture");
       const body =
-        url.pathname === "/pingdotgg/t3code/releases/latest" &&
+        url.pathname === "/nikhil-pandey/t3code/releases/latest" &&
         request.headers.accept === "application/json"
           ? { tag_name: "v1.2.3" }
-          : url.pathname === "/repos/pingdotgg/t3code/releases"
+          : url.pathname === "/repos/nikhil-pandey/t3code/releases"
             ? { "1": nightlies, "2": [{ tag_name: `v${version}` }, { tag_name: "v1.2.3" }] }[
                 url.searchParams.get("page") ?? ""
               ]
@@ -220,12 +220,12 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("install.sh t3 
         `printf '\\n%s\\n' 'export PATH="$PATH:$HOME/bin"' >> ~/.zshrc`,
       );
 
-      // Containers and CI often have no SHELL; `set -u` must not stop the installer there.
+      // Containers and CI often have an empty SHELL; `set -u` must not stop the installer there.
       const noShell = await installOver({
         script: "install.sh",
         home,
         binDir,
-        env: { HOME: root, SHELL: undefined, PATH: "/usr/bin:/bin" },
+        env: { HOME: root, SHELL: "", PATH: "/usr/bin:/bin" },
       });
       expect(noShell.code, noShell.output).toBe(0);
       expect(noShell.output).toContain(`Add ${binDir} to your PATH`);

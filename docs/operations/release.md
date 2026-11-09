@@ -2,6 +2,36 @@
 
 > For maintainers. Using T3 Code? See [docs/user](../user/).
 
+## This fork's releases
+
+[`fork-release.yml`](../../.github/workflows/fork-release.yml) publishes desktop installers and self-contained CLI
+archives to [this fork's GitHub Releases](https://github.com/nikhil-pandey/t3code/releases). A successful push CI run on
+`main` triggers a nightly prerelease of that exact commit. Failed CI runs publish nothing. PR checks do not publish.
+
+To release manually, select **Fork release** in Actions, choose `main`, and select `nightly` or `stable`. Stable requires
+an unused `X.Y.Z` version newer than the latest stable release; nightly generates its own version. Both require successful
+push CI for the selected commit. Versions are aligned only in the build; the workflow does not commit back to `main`.
+
+```sh
+gh identity --repo nikhil-pandey/t3code -- workflow run fork-release.yml --repo nikhil-pandey/t3code --ref main -f channel=nightly
+gh identity --repo nikhil-pandey/t3code -- workflow run fork-release.yml --repo nikhil-pandey/t3code --ref main -f channel=stable -f version=X.Y.Z
+```
+
+Desktop targets are macOS, Linux, and Windows on x64 and arm64. CLI archives cover the same targets except macOS x64,
+where Node single-executables are unsupported. Windows desktop builds include their matching Linux CLI for WSL.
+Publication waits for every build and smoke check, merges updater manifests, and includes CLI `SHA256SUMS`. Desktop
+updaters, `t3 update`, and the repository's installer scripts point at this fork. Nightlies remain prereleases and do not
+replace the latest stable release.
+
+The workflow needs only the repository's built-in token. Builds are unsigned until the optional Apple or Azure signing
+credentials described below are configured. Unsigned macOS builds are not notarized and may need manual approval to open.
+Hosted T3 Connect is not configured in these builds; local and directly paired environments remain available. Optional
+telemetry stays disabled by default. This workflow does not publish npm packages, deploy hosted services, or release mobile
+apps. The inherited upstream release workflow below remains restricted to `pingdotgg/t3code`.
+
+A failed build leaves diagnostic artifacts in Actions and publishes no release. Fix it and rerun failed jobs. If publication
+created a draft before failing, remove that incomplete draft and its tag before rerunning publication.
+
 This document covers the unified release workflow for stable and nightly desktop releases.
 
 Beta is the product label, not a release channel or version suffix. Release channels
