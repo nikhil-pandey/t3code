@@ -9,6 +9,7 @@ import {
   exchangeRemoteDpopAccessToken,
   issueRemoteDpopWebSocketTicket,
   issueRemoteWebSocketTicket,
+  readClientOwnerParams,
   resolveRemoteDpopWebSocketConnectionUrl,
   resolveRemoteWebSocketConnectionUrl,
 } from "./remote.ts";
@@ -316,6 +317,17 @@ describe("remote environment authorization", () => {
 
   it.effect("names the signed-in Connect account and this device by hash only", () =>
     Effect.gen(function* () {
+      expect(
+        yield* readClientOwnerParams.pipe(
+          Effect.provideService(ClientCapabilities.AnalyticsDevice, {
+            id: Effect.die("Device identity must not be collected without consent"),
+          }),
+          Effect.provideService(ClientCapabilities.CloudSession, {
+            identity: Effect.die("Account identity must not be collected without consent"),
+            clerkToken: Effect.succeed("clerk-token"),
+          }),
+        ),
+      ).toEqual({});
       const fetch = recordedFetch(
         Response.json({ ticket: "ws-ticket", expiresAt: "2026-05-01T12:05:00.000Z" }),
       );
@@ -334,6 +346,7 @@ describe("remote environment authorization", () => {
               clerkToken: Effect.succeed("clerk-token"),
             }),
           ),
+          Effect.provideService(ClientCapabilities.AnalyticsConsent, true),
           Effect.provideService(ClientCapabilities.AnalyticsDevice, {
             id: Effect.succeedSome("device-1"),
           }),

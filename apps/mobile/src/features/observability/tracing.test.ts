@@ -12,12 +12,26 @@ import * as Tracing from "./tracing";
 vi.mock("expo-constants", () => ({
   default: {
     expoConfig: {
-      extra: {},
+      extra: {
+        observability: {
+          tracesUrl: "https://api.axiom.test/v1/traces",
+          tracesDataset: "mobile-traces",
+          tracesToken: "public-ingest-token",
+        },
+      },
     },
   },
 }));
 
 it.effect("does not let OTLP serialization failures alter application effects", () => {
+  vi.stubEnv("EXPO_PUBLIC_T3CODE_TELEMETRY_ENABLED", undefined);
+  expect(Tracing.resolveTracingConfig()).toBeNull();
+  vi.stubEnv("EXPO_PUBLIC_T3CODE_TELEMETRY_ENABLED", "true");
+  try {
+    expect(Tracing.resolveTracingConfig()?.tracesDataset).toBe("mobile-traces");
+  } finally {
+    vi.unstubAllEnvs();
+  }
   const fetchFn = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
   const layerTracing = Tracing.layerFromConfig(
     {

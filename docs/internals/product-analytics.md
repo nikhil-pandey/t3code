@@ -1,9 +1,9 @@
 # Product analytics
 
-The server owns analytics delivery, opt-out, and identity for every connected client.
-Clients do not load the PostHog browser SDK. Client-use events require an
-authenticated connection, so visiting the hosted app without connecting does not
-count as product use.
+The server owns analytics delivery, opt-in, and identity for every connected client. Collection defaults off;
+`T3CODE_TELEMETRY_ENABLED=true` opts a server in. Identity lookup is deferred until collection is enabled, and clients
+report owners only with their own consent. Clients do not load the PostHog browser SDK. Client-use events require an
+authenticated connection, so visiting the hosted app without connecting does not count as product use.
 
 ## Installs and owners
 

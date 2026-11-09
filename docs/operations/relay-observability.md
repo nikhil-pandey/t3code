@@ -29,9 +29,11 @@ Alchemy resolves account-level Axiom deployment credentials through its provider
 Worker receives only its scoped ingest token. Mobile and relay clients use their own separately
 provisioned scoped ingest tokens.
 
-The Worker emits Effect's built-in HTTP server spans plus endpoint and database child spans.
-Effect's OpenTelemetry exporter stores semantic HTTP attributes below the `attributes.` prefix.
-For example:
+Worker trace export defaults off. Set `T3CODE_TELEMETRY_ENABLED=true` when deploying to enable Axiom export. This does
+not opt in clients or mobile crash reports; those have separate controls.
+
+When enabled, the Worker emits Effect's built-in HTTP server spans plus endpoint and database child spans. Effect's
+OpenTelemetry exporter stores semantic HTTP attributes below the `attributes.` prefix. For example:
 
 ```apl
 ['t3-code-relay-traces-prod']

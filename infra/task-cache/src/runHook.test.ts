@@ -46,6 +46,11 @@ it("sends telemetry from a detached flusher that the task runner does not wait f
     vi.stubEnv("GITHUB_ACTIONS", undefined);
     vi.stubEnv("T3_TASK_CACHE_TELEMETRY", undefined);
     vi.stubEnv("VITE_CACHE_PATH", undefined);
+    const disabled = startRunHook({ root });
+    await disabled?.();
+    expect(flushers).toHaveLength(0);
+    expect(await NodeFSP.readdir(root)).not.toContain("node_modules");
+    vi.stubEnv("T3_TASK_CACHE_TELEMETRY", "on");
     const finish = startRunHook({ root });
     const summary = NodePath.join(root, "node_modules/.vite/task-cache/run/last-summary.json");
     await NodeFSP.mkdir(NodePath.dirname(summary), { recursive: true });
@@ -222,7 +227,7 @@ it("installs without masking .profile and configures CI through bash", async () 
       ?.slice(9);
     const output = await run(["bash", "-c", 'printf "%s" "$NODE_OPTIONS"'], { BASH_ENV: bashEnv });
     expect(output).toContain("--import=file:");
-    expect(output).toContain("/infra/task-cache/src/preload.mjs");
+    expect(output).toContain(NodePath.join(home, ".local/share/t3-task-cache/preload.mjs"));
     await NodeFSP.rm(NodePath.join(home, ".local/share/t3-task-cache/preload.mjs"));
     const missing = await run(["bash", "-c", `node -e 'console.log("missing preload is safe")'`], {
       BASH_ENV: NodePath.join(home, ".config/t3-task-cache/env"),

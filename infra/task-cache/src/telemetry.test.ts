@@ -44,8 +44,18 @@ it("deduplicates shared summaries and retries delivery without credentials in qu
   const home = NodePath.join(root, "home");
   const endpoint = "https://cache.example/projects/t3code";
   try {
-    const stopA = observeSummaries(root, endpoint, { T3_TASK_CACHE_HOST: "test-host" }, home);
-    const stopB = observeSummaries(root, endpoint, { T3_TASK_CACHE_HOST: "test-host" }, home);
+    const stopA = observeSummaries(
+      root,
+      endpoint,
+      { T3_TASK_CACHE_TELEMETRY: "on", T3_TASK_CACHE_HOST: "test-host" },
+      home,
+    );
+    const stopB = observeSummaries(
+      root,
+      endpoint,
+      { T3_TASK_CACHE_TELEMETRY: "on", T3_TASK_CACHE_HOST: "test-host" },
+      home,
+    );
     const version = NodePath.join(root, "node_modules/.vite/task-cache/v18");
     NodeFS.mkdirSync(version);
     NodeFS.writeFileSync(
@@ -78,8 +88,10 @@ it("deduplicates shared summaries and retries delivery without credentials in qu
       })
       .mockResolvedValue(new Response(null, { status: 204 }));
     await flushTelemetry(home, {});
+    expect(request).not.toHaveBeenCalled();
+    await flushTelemetry(home, { T3_TASK_CACHE_TELEMETRY: "on" });
     expect(NodeFS.readdirSync(queue)).toEqual(files);
-    await flushTelemetry(home, {});
+    await flushTelemetry(home, { T3_TASK_CACHE_TELEMETRY: "on" });
     expect(NodeFS.readdirSync(queue)).toEqual([]);
     expect(request).toHaveBeenCalledTimes(3);
     expect(request.mock.calls[0]![0].toString()).toBe(`${endpoint}/telemetry`);
@@ -112,7 +124,7 @@ it("skips unauthenticated endpoints without consuming the delivery budget", asyn
     using request = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(null, { status: 204 }));
-    await flushTelemetry(home, {});
+    await flushTelemetry(home, { T3_TASK_CACHE_TELEMETRY: "on" });
     expect(NodeFS.readdirSync(queue).sort()).toEqual(skipped.sort());
     expect(request).toHaveBeenCalledOnce();
     expect(request.mock.calls[0]![0].toString()).toBe(`${endpoint}/telemetry`);
@@ -158,7 +170,7 @@ it("drops revoked credentials and continues delivering other queued endpoints", 
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(null, { status: 403 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    await flushTelemetry(home, {});
+    await flushTelemetry(home, { T3_TASK_CACHE_TELEMETRY: "on" });
     expect(request).toHaveBeenCalledTimes(2);
     expect(NodeFS.readdirSync(queue)).toEqual([]);
   } finally {
@@ -191,10 +203,10 @@ it("delivers an event queued while the previous flusher releases its lock", asyn
         NodePath.join(queue, "late.json"),
         JSON.stringify({ endpoint, event: { id: "late" } }),
       );
-      competing = flushTelemetry(home, {});
+      competing = flushTelemetry(home, { T3_TASK_CACHE_TELEMETRY: "on" });
       release(path, options);
     });
-    await flushTelemetry(home, {});
+    await flushTelemetry(home, { T3_TASK_CACHE_TELEMETRY: "on" });
     await competing;
     expect(request).toHaveBeenCalledOnce();
     expect(NodeFS.readdirSync(queue)).toEqual([]);

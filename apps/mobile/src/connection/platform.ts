@@ -31,6 +31,8 @@ import { clearThreadComposerErrorsForEnvironment } from "../state/thread-compose
 import { mobileApplicationActiveWakeup } from "./app-state-wakeups";
 import * as ConnectionStorage from "./storage";
 
+const TELEMETRY_ENABLED = process.env.EXPO_PUBLIC_T3CODE_TELEMETRY_ENABLED === "true";
+
 function networkStatus(state: Network.NetworkState): "unknown" | "offline" | "online" {
   if (state.isConnected === false) {
     return "offline";
@@ -193,6 +195,7 @@ const layerCapabilities = Layer.effectContext(
         }),
       ),
       // The relay device id already persists in secure storage; analytics only sends its hash.
+      Context.add(ClientCapabilities.AnalyticsConsent, TELEMETRY_ENABLED),
       Context.add(ClientCapabilities.AnalyticsDevice, {
         id: storage.loadOrCreateAgentAwarenessDeviceId.pipe(Effect.option),
       }),

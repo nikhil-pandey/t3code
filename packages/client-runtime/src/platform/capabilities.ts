@@ -40,6 +40,11 @@ export class RelayDeviceIdentity extends Context.Service<
   }
 >()("@t3tools/client-runtime/platform/capabilities/RelayDeviceIdentity") {}
 
+export class AnalyticsConsent extends Context.Reference(
+  "@t3tools/client-runtime/platform/capabilities/AnalyticsConsent",
+  { defaultValue: () => false },
+) {}
+
 /**
  * A random id this client keeps across launches. Environments it connects to
  * record its hash, so two environments opened from one device share an owner

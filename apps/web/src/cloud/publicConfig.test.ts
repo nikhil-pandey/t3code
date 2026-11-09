@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { hasCloudPublicConfig } from "./publicConfig.ts";
+import { hasCloudPublicConfig, resolveRelayTracingConfig } from "./publicConfig.ts";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -75,4 +75,20 @@ describe("hasCloudPublicConfig", () => {
       expect(hasCloudPublicConfig()).toBe(true);
     });
   });
+});
+
+it("requires client consent even when relay tracing credentials are bundled", () => {
+  vi.stubGlobal("window", {});
+  vi.stubEnv("VITE_RELAY_OTLP_TRACES_URL", "https://traces.example.test/v1/traces");
+  vi.stubEnv("VITE_RELAY_OTLP_TRACES_DATASET", "traces");
+  vi.stubEnv("VITE_RELAY_OTLP_TRACES_TOKEN", "public-ingest-token");
+  vi.stubEnv("VITE_T3CODE_TELEMETRY_ENABLED", undefined);
+  expect(resolveRelayTracingConfig()).toBeNull();
+  vi.stubEnv("VITE_T3CODE_TELEMETRY_ENABLED", "true");
+  expect(resolveRelayTracingConfig()).not.toBeNull();
+  vi.stubGlobal("window", { desktopBridge: { getRelayTelemetryEnabled: () => false } });
+  expect(resolveRelayTracingConfig()).toBeNull();
+  vi.stubEnv("VITE_T3CODE_TELEMETRY_ENABLED", undefined);
+  vi.stubGlobal("window", { desktopBridge: { getRelayTelemetryEnabled: () => true } });
+  expect(resolveRelayTracingConfig()).not.toBeNull();
 });

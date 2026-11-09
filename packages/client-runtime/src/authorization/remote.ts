@@ -53,6 +53,7 @@ export interface ClientOwnerParams {
  * are connecting, so it can count the environment as theirs.
  */
 export const readClientOwnerParams = Effect.gen(function* () {
+  if (!(yield* ClientCapabilities.AnalyticsConsent)) return {};
   const session = yield* Effect.serviceOption(ClientCapabilities.CloudSession);
   const account = Option.isSome(session) ? yield* session.value.identity : Option.none();
   const device = yield* (yield* ClientCapabilities.AnalyticsDevice).id;

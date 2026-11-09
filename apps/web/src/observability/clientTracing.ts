@@ -10,6 +10,7 @@ import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import { resolvePrimaryEnvironmentHttpUrl } from "../environments/primary";
 import { releaseChannelOf, releaseResourceAttributes } from "@t3tools/shared/releaseResource";
 import * as ClientTracer from "./clientTracer";
+import { isClientTelemetryEnabled } from "../cloud/publicConfig";
 import * as PrimaryEnvironmentHttpLayer from "../environments/primary/httpLayer";
 import { isElectron } from "../env";
 import { APP_VERSION } from "~/branding";
@@ -74,7 +75,7 @@ let activeConfigKey: string | null = null;
 let pendingConfiguration = Promise.resolve();
 
 export function configureClientTracing(): Promise<void> {
-  if (activeConfigKey !== null) {
+  if (!isClientTelemetryEnabled() || activeConfigKey !== null) {
     return pendingConfiguration;
   }
   pendingConfiguration = pendingConfiguration.finally(() => applyClientTracingConfig());

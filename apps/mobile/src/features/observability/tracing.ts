@@ -23,6 +23,7 @@ const RELEASE_CHANNEL_BY_VARIANT: Readonly<Record<string, ReleaseChannel | undef
 };
 
 export function resolveTracingConfig(): TracingConfig | null {
+  if (process.env.EXPO_PUBLIC_T3CODE_TELEMETRY_ENABLED !== "true") return null;
   const config = resolveCloudPublicConfig();
   if (!hasTracingPublicConfig(config)) {
     return null;

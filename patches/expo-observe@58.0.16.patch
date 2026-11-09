@@ -1,0 +1,68 @@
+diff --git a/ios/Observability.swift b/ios/Observability.swift
+--- a/ios/Observability.swift
++++ b/ios/Observability.swift
+@@ -366,7 +366,7 @@
+     isDev: Bool,
+     isInSample: Bool
+   ) -> Bool {
+-    let dispatchingEnabled = config?.dispatchingEnabled ?? true
++    let dispatchingEnabled = config?.dispatchingEnabled ?? false
+     let dispatchInDebug = config?.dispatchInDebug ?? false
+     return dispatchingEnabled && isInSample && (!isDev || dispatchInDebug)
+   }
+diff --git a/android/src/main/java/expo/modules/observe/ObservabilityManager.kt b/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
+--- a/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
++++ b/android/src/main/java/expo/modules/observe/ObservabilityManager.kt
+@@ -376,7 +376,7 @@
+ 
+   private fun shouldDispatch(): Boolean {
+     val config = ObservePreferences.getConfig(context)
+-    val dispatchingEnabled = config?.dispatchingEnabled ?: true
++    val dispatchingEnabled = config?.dispatchingEnabled ?: false
+     val dispatchInDebug = config?.dispatchInDebug ?: false
+     // `isDev` is the OR of the JS-bundle dev flag (pushed via `setBundleDefaults` on JS
+     // package import) and the native build's debug flag. Either being true means the
+diff --git a/ios/ObserveUserDefaults.swift b/ios/ObserveUserDefaults.swift
+--- a/ios/ObserveUserDefaults.swift
++++ b/ios/ObserveUserDefaults.swift
+@@ -76,7 +76,10 @@
+     }
+   }
+ 
++  private static var configuredInSession = false
++
+   static var config: PersistedConfig? {
++    guard configuredInSession else { return nil }
+     guard let data = defaults.data(forKey: Keys.config.rawValue) else { return nil }
+     return try? JSONDecoder().decode(PersistedConfig.self, from: data)
+   }
+@@ -84,6 +87,7 @@
+   static func setConfig(_ newValue: PersistedConfig) {
+     guard let data = try? JSONEncoder().encode(newValue) else { return }
+     defaults.set(data, forKey: Keys.config.rawValue)
++    configuredInSession = true
+   }
+ 
+   static var bundleDefaults: PersistedBundleDefaults? {
+diff --git a/android/src/main/java/expo/modules/observe/ObservePreferences.kt b/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+--- a/android/src/main/java/expo/modules/observe/ObservePreferences.kt
++++ b/android/src/main/java/expo/modules/observe/ObservePreferences.kt
+@@ -31,7 +31,10 @@
+ )
+ 
+ object ObservePreferences {
++  @Volatile private var configuredInSession = false
++
+   fun getConfig(context: Context): PersistedConfig? {
++    if (!configuredInSession) return null
+     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+     val json = prefs.getString(KEY_CONFIG, null) ?: return null
+     return runCatching { Json.decodeFromString<PersistedConfig>(json) }.getOrNull()
+@@ -42,6 +45,7 @@
+     prefs.edit(commit = true) {
+       putString(KEY_CONFIG, Json.encodeToString(config))
+     }
++    configuredInSession = true
+   }
+ 
+   fun getBundleDefaults(context: Context): PersistedBundleDefaults? {

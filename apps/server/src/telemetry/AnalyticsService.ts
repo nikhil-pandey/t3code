@@ -71,7 +71,7 @@ const TelemetryEnvConfig = Config.all({
   posthogHost: Config.String("T3CODE_POSTHOG_HOST").pipe(
     Config.withDefault("https://ingest.t3.codes"),
   ),
-  enabled: Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(Config.withDefault(true)),
+  enabled: Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(Config.withDefault(false)),
   flushBatchSize: Config.Number("T3CODE_TELEMETRY_FLUSH_BATCH_SIZE").pipe(Config.withDefault(20)),
   maxBufferedEvents: Config.Number("T3CODE_TELEMETRY_MAX_BUFFERED_EVENTS").pipe(
     Config.withDefault(1_000),
@@ -94,10 +94,12 @@ export class AnalyticsService extends Context.Service<
      * server read itself or a connecting client reported. Each owner is sent once
      * per server process, so reconnects and repeated reads are free.
      */
-    readonly recordOwners: (
-      owners: ReadonlyArray<TelemetryOwner>,
+    readonly recordOwners: <R = never>(
+      owners:
+        | ReadonlyArray<TelemetryOwner>
+        | Effect.Effect<ReadonlyArray<TelemetryOwner>, never, R>,
       observedBy: "server" | "client",
-    ) => Effect.Effect<void>;
+    ) => Effect.Effect<void, never, R>;
   }
 >()("t3/telemetry/AnalyticsService") {}
 
@@ -127,13 +129,13 @@ export const make = Effect.gen(function* () {
     ManagedPolicy.deniedBy(yield* ManagedPolicy.ManagedPolicy, "telemetry") === undefined;
   // A cached PATH does not establish consent from the current login shell.
   const telemetryEnabled = Effect.suspend(() => {
-    if (!telemetryConfig.enabled || !policyAllows) return Effect.succeed(false);
-    if (!awaitingShellConsent) return Effect.succeed(true);
+    if (!policyAllows) return Effect.succeed(false);
+    if (!awaitingShellConsent) return Effect.succeed(telemetryConfig.enabled);
     if (hostEnvironment.T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING === "1")
       return Effect.succeed(false);
     const preference = hostEnvironment.T3CODE_TELEMETRY_ENABLED;
     return Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(
-      Config.withDefault(true),
+      Config.withDefault(false),
       Effect.provideService(
         ConfigProvider.ConfigProvider,
         ConfigProvider.fromEnv({
@@ -145,7 +147,10 @@ export const make = Effect.gen(function* () {
   });
   const httpClient = yield* HttpClient.HttpClient;
   const serverConfig = yield* ServerConfig.ServerConfig;
-  const { distinctId, installId } = yield* getTelemetryIdentity;
+  const identityContext = yield* Effect.context<Effect.Services<typeof getTelemetryIdentity>>();
+  const identity = yield* Effect.cached(
+    getTelemetryIdentity.pipe(Effect.provideContext(identityContext)),
+  );
   const crypto = yield* SecureRandom.SecureRandom;
   const bufferRef = yield* Ref.make<ReadonlyArray<BufferedAnalyticsEvent>>([]);
   const deliveryRef = yield* Ref.make<DeliveryState>({
@@ -199,7 +204,9 @@ export const make = Effect.gen(function* () {
   const sendBatch = Effect.fn("AnalyticsService.sendBatch")(function* (
     events: ReadonlyArray<BufferedAnalyticsEvent>,
   ) {
-    if (!(yield* telemetryEnabled) || !distinctId) return;
+    if (!(yield* telemetryEnabled)) return;
+    const { distinctId, installId } = yield* identity;
+    if (!distinctId) return;
 
     const payload = {
       api_key: telemetryConfig.posthogKey,
@@ -311,7 +318,9 @@ export const make = Effect.gen(function* () {
 
   const record: AnalyticsService["Service"]["record"] = Effect.fn("AnalyticsService.record")(
     function* (event, properties) {
-      if (!(yield* telemetryEnabled) || !distinctId) return;
+      if (!(yield* telemetryEnabled)) return;
+      const { distinctId } = yield* identity;
+      if (!distinctId) return;
 
       // Catch Node UUID defects too; best-effort telemetry drops events without UUIDs.
       const uuid = yield* Effect.exit(crypto.uuidV7());
@@ -329,9 +338,10 @@ export const make = Effect.gen(function* () {
 
   const recordOwners: AnalyticsService["Service"]["recordOwners"] = Effect.fn(
     "AnalyticsService.recordOwners",
-  )((owners, observedBy) =>
-    Effect.forEach(
-      owners,
+  )(function* (owners, observedBy) {
+    if (!(yield* telemetryEnabled)) return;
+    yield* Effect.forEach(
+      Effect.isEffect(owners) ? yield* owners : owners,
       ({ source, ownerId }) =>
         Ref.modify(recordedOwnersRef, (recorded) => {
           const key = `${source}:${ownerId}`;
@@ -347,8 +357,8 @@ export const make = Effect.gen(function* () {
           ),
         ),
       { discard: true },
-    ),
-  );
+    );
+  });
 
   yield* Effect.forever(Effect.sleep(FLUSH_INTERVAL_MS).pipe(Effect.andThen(flushWhenDue)), {
     disableYield: true,

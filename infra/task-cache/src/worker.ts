@@ -106,9 +106,14 @@ export const layer = Worker.make(
       Cloudflare.Workers.RateLimitBinding,
       Cloudflare.Workers.CronEventSourceLive,
       Layer.unwrap(
-        Effect.map(Observability, ({ traces, token }) =>
-          Axiom.Telemetry({ serviceName: "t3-task-cache", traces, token }),
-        ),
+        Effect.gen(function* () {
+          const enabled = yield* Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(
+            Config.withDefault(false),
+          );
+          if (!enabled) return Layer.empty;
+          const { traces, token } = yield* Observability;
+          return Axiom.Telemetry({ serviceName: "t3-task-cache", traces, token });
+        }),
       ),
     ]),
   ),

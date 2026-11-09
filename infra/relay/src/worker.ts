@@ -573,13 +573,18 @@ export const layer = Api.make(
         ),
         Layer.provideMerge(
           Layer.unwrap(
-            Effect.map(RelayObservability, (observability) =>
-              Axiom.Telemetry({
+            Effect.gen(function* () {
+              const enabled = yield* Config.Boolean("T3CODE_TELEMETRY_ENABLED").pipe(
+                Config.withDefault(false),
+              );
+              if (!enabled) return Layer.empty;
+              const observability = yield* RelayObservability;
+              return Axiom.Telemetry({
                 serviceName: "t3code-relay",
                 token: observability.workerIngestToken,
                 traces: observability.traces,
-              }),
-            ),
+              });
+            }),
           ),
         ),
       ),
