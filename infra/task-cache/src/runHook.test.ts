@@ -217,6 +217,7 @@ it("installs without masking .profile and configures CI through bash", async () 
       GITHUB_REPOSITORY: "pingdotgg/t3code",
       GITHUB_ACTIONS: "true",
       GITHUB_ENV: githubEnv,
+      BASH_ENV: "",
       RUNNER_TEMP: home,
     });
     const values = await NodeFSP.readFile(githubEnv, "utf8");
@@ -225,13 +226,19 @@ it("installs without masking .profile and configures CI through bash", async () 
       .split("\n")
       .find((line) => line.startsWith("BASH_ENV="))
       ?.slice(9);
-    const output = await run(["bash", "-c", 'printf "%s" "$NODE_OPTIONS"'], { BASH_ENV: bashEnv });
+    const output = await run(
+      ["bash", "--noprofile", "--norc", "-c", 'printf "%s" "$NODE_OPTIONS"'],
+      { BASH_ENV: bashEnv },
+    );
     expect(output).toContain("--import=file:");
-    expect(output).toContain(NodePath.join(home, ".local/share/t3-task-cache/preload.mjs"));
+    expect(output).toContain("/infra/task-cache/src/preload.mjs");
     await NodeFSP.rm(NodePath.join(home, ".local/share/t3-task-cache/preload.mjs"));
-    const missing = await run(["bash", "-c", `node -e 'console.log("missing preload is safe")'`], {
-      BASH_ENV: NodePath.join(home, ".config/t3-task-cache/env"),
-    });
+    const missing = await run(
+      ["bash", "--noprofile", "--norc", "-c", `node -e 'console.log("missing preload is safe")'`],
+      {
+        BASH_ENV: NodePath.join(home, ".config/t3-task-cache/env"),
+      },
+    );
     expect(missing).toContain("missing preload is safe");
 
     await NodeFSP.writeFile(
