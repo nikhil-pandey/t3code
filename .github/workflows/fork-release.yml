@@ -1,0 +1,316 @@
+name: Fork release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        required: true
+        type: choice
+        options: [nightly, stable]
+        default: nightly
+      version:
+        description: Stable version (X.Y.Z); leave empty for nightly
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      github.repository == 'nikhil-pandey/t3code' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-24.04
+    outputs:
+      ref: ${{ steps.release.outputs.ref }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      channel: ${{ steps.release.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - name: Validate source and resolve version
+        id: release
+        uses: actions/github-script@v8
+        env:
+          RELEASE_CHANNEL: ${{ inputs.channel || 'nightly' }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const ref = context.payload.workflow_run?.head_sha ?? context.sha;
+            if (context.eventName === 'workflow_dispatch' && context.ref !== 'refs/heads/main') {
+              throw new Error('Dispatch releases from main.');
+            }
+            const runs = await github.rest.actions.listWorkflowRuns({
+              ...context.repo, workflow_id: 'ci.yml', head_sha: ref,
+              branch: 'main', event: 'push', status: 'success', per_page: 1,
+            });
+            if (!runs.data.workflow_runs.length) throw new Error('This commit has no successful main CI run.');
+            let latest;
+            try {
+              latest = (await github.rest.repos.getLatestRelease(context.repo)).data.tag_name.replace(/^v/, '');
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const parse = (value) => {
+              if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)) {
+                throw new Error(`Expected X.Y.Z, got ${value}`);
+              }
+              return value.split('.').map(BigInt);
+            };
+            const compare = (a, b) => {
+              const left = parse(a), right = parse(b);
+              for (let i = 0; i < 3; i++) {
+                if (left[i] !== right[i]) return left[i] > right[i] ? 1 : -1;
+              }
+              return 0;
+            };
+            const channel = process.env.RELEASE_CHANNEL;
+            if (!['stable', 'nightly'].includes(channel)) throw new Error('Invalid channel.');
+            let version = process.env.RELEASE_VERSION?.trim();
+            if (channel === 'stable') {
+              parse(version);
+              if (latest && compare(version, latest) <= 0) throw new Error('Stable version must increase.');
+            } else {
+              if (version) throw new Error('Nightly versions are generated automatically.');
+              let base = JSON.parse(fs.readFileSync('apps/desktop/package.json', 'utf8')).version.split('-')[0];
+              if (latest && compare(latest, base) > 0) base = latest;
+              const [major, minor, patch] = parse(base);
+              const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+              version = `${major}.${minor}.${patch + 1n}-nightly.${date}.${context.runNumber}`;
+            }
+            const tag = `v${version}`;
+            try {
+              await github.rest.repos.getReleaseByTag({ ...context.repo, tag });
+              throw new Error(`Release ${tag} already exists; choose a new version or run.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            try {
+              await github.rest.git.getRef({ ...context.repo, ref: `tags/${tag}` });
+              throw new Error(`Tag ${tag} already exists; choose a new version or run.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            for (const [key, value] of Object.entries({ref, version, tag, channel})) core.setOutput(key, value);
+
+  build_bundle:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+      - name: Align release versions
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: node scripts/update-release-package-versions.ts "$VERSION"
+      - name: Build JS bundle
+        env:
+          T3CODE_TELEMETRY_ENABLED: "false"
+          VITE_T3CODE_TELEMETRY_ENABLED: "false"
+        run: vp run build:desktop:bundle
+      - uses: actions/upload-artifact@v7
+        with:
+          name: js-bundle
+          path: |
+            apps/server/dist
+            apps/desktop/dist-electron
+          if-no-files-found: error
+          retention-days: 1
+
+  desktop:
+    name: Desktop ${{ matrix.label }}
+    needs: [prepare, build_bundle]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS arm64
+            runner: macos-15
+            platform: mac
+            target: dmg
+            arch: arm64
+            rust_target: aarch64-apple-darwin
+            resource_key: darwin-arm64
+            cli_archive: true
+            launch_check: true
+            verify_runner: ""
+          - label: macOS x64
+            runner: macos-15-intel
+            platform: mac
+            target: dmg
+            arch: x64
+            rust_target: x86_64-apple-darwin
+            resource_key: darwin-x64
+            cli_archive: false
+            launch_check: false
+            verify_runner: ""
+          - label: Linux x64
+            runner: ubuntu-24.04
+            platform: linux
+            target: AppImage
+            arch: x64
+            rust_target: x86_64-unknown-linux-gnu
+            resource_key: linux-x64
+            cli_archive: true
+            launch_check: true
+            verify_runner: ""
+          - label: Linux arm64
+            runner: ubuntu-24.04-arm
+            platform: linux
+            target: AppImage
+            arch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            resource_key: linux-arm64
+            cli_archive: true
+            launch_check: false
+            verify_runner: ""
+          - label: Windows x64
+            runner: ubuntu-24.04
+            platform: win
+            target: nsis
+            arch: x64
+            rust_target: x86_64-pc-windows-msvc
+            resource_key: win32-x64
+            cli_archive: true
+            launch_check: false
+            verify_runner: windows-2025
+          - label: Windows arm64
+            runner: ubuntu-24.04
+            platform: win
+            target: nsis
+            arch: arm64
+            rust_target: aarch64-pc-windows-msvc
+            resource_key: win32-arm64
+            cli_archive: true
+            launch_check: false
+            verify_runner: windows-11-arm
+    uses: ./.github/workflows/release-desktop.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+      release_channel: ${{ needs.prepare.outputs.channel }}
+      relay_client_tracing: false
+      build_timeout_minutes: 90
+      clerk_publishable_key: ""
+      clerk_jwt_template: ""
+      clerk_cli_oauth_client_id: ""
+      relay_url: ""
+      label: ${{ matrix.label }}
+      runner: ${{ matrix.runner }}
+      platform: ${{ matrix.platform }}
+      target: ${{ matrix.target }}
+      arch: ${{ matrix.arch }}
+      rust_target: ${{ matrix.rust_target }}
+      resource_key: ${{ matrix.resource_key }}
+      cli_archive: ${{ matrix.cli_archive }}
+      launch_check: ${{ matrix.launch_check }}
+      verify_runner: ${{ matrix.verify_runner }}
+
+  publish:
+    needs: [prepare, desktop]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/scripts...
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-assets
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cli-*
+          merge-multiple: true
+          path: release-assets
+      - name: Merge updater manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for x64 in release-assets/*-mac-x64.yml; do
+            arm64="${x64%-x64.yml}.yml"
+            node scripts/merge-update-manifests.ts --platform mac "$arm64" "$x64"
+            rm "$x64"
+          done
+          for x64 in release-assets/*-win-x64.yml; do
+            arm64="${x64%-win-x64.yml}-arm64.yml"
+            merged="${x64%-win-x64.yml}.yml"
+            node scripts/merge-update-manifests.ts --platform win "$x64" "$arm64" "$merged"
+            rm "$x64" "$arm64"
+          done
+          rm -f release-assets/builder-debug.yml
+      - name: Check CLI archives and write checksums
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          archives=("t3-$VERSION-darwin-arm64.tar.gz" "t3-$VERSION-linux-x64.tar.gz" "t3-$VERSION-linux-arm64.tar.gz" "t3-$VERSION-win32-x64.zip" "t3-$VERSION-win32-arm64.zip")
+          sha256sum "${archives[@]}" > SHA256SUMS
+      - name: Publish fork release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_REF: ${{ needs.prepare.outputs.ref }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--latest)
+          if [[ "$CHANNEL" == nightly ]]; then args=(--prerelease --latest=false); fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          Desktop installers and self-contained CLI archives built from this fork.
+          Optional telemetry is disabled by default. Hosted T3 Connect is not configured in these builds.
+
+          macOS and Windows builds are unsigned unless this fork has signing credentials configured.
+          SHA256SUMS verifies the CLI archives.
+          NOTES
+          gh release create "$TAG" release-assets/* --target "$RELEASE_REF" \
+            --title "T3 Code $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --generate-notes "${args[@]}"
