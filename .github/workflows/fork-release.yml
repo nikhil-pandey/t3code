@@ -289,7 +289,7 @@ jobs:
             rm "$x64"
           done
           for x64 in release-assets/*-win-x64.yml; do
-            arm64="${x64%-win-x64.yml}-arm64.yml"
+            arm64="${x64%-x64.yml}-arm64.yml"
             merged="${x64%-win-x64.yml}.yml"
             node scripts/merge-update-manifests.ts --platform win "$x64" "$arm64" "$merged"
             rm "$x64" "$arm64"
